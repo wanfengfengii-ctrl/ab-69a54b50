@@ -1,0 +1,39 @@
+# 高安全分析仪 · 离线恢复密钥合成
+#
+# 宿主机端口通过环境变量 HOST_PORT 配置（默认 8080）：
+#   HOST_PORT=9090 docker compose up -d app
+#
+# 一次性验收（代码测试 + 构建检查 + HTTP 冒烟，退出码即结果）：
+#   docker compose run --rm verify
+#   或：docker compose up --exit-code-from verify verify
+services:
+  app:
+    build:
+      context: .
+      target: runtime
+    image: recovery-app:local
+    environment:
+      PORT: "8080"
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:$$PORT/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+  # 一次性验收服务：跑完测试、构建检查与 HTTP 冒烟后自行退出，
+  # 退出码 0 表示全部通过，非 0 表示存在失败项。
+  verify:
+    build:
+      context: .
+      target: verify
+    image: recovery-verify:local
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      APP_URL: http://app:8080
+    restart: "no"

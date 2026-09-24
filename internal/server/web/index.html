@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>离线恢复密钥合成 · 高安全分析仪</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>离线恢复密钥合成</h1>
+      <p class="hint">
+        录入 <strong>4–8 张</strong>恢复卡的<strong>唯一非零编号（1–255）</strong>、门限值与<strong>等长十六进制份额</strong>。
+        服务在 GF(256) 上将每张卡的份额视为「门限值 − 1」阶多项式上的点，并以零点值作为设备恢复密钥。
+      </p>
+    </header>
+
+    <form id="reconstruct-form" novalidate>
+      <div class="field threshold-field">
+        <label for="threshold">门限值（2 至卡片数量）</label>
+        <input id="threshold" name="threshold" type="number" min="2" max="8" step="1" value="3" required>
+        <p class="field-error" data-error-for="threshold" hidden></p>
+      </div>
+
+      <div id="cards" class="cards"></div>
+
+      <div class="actions">
+        <button type="button" id="add-card" class="secondary">＋ 添加卡片</button>
+        <button type="submit" id="submit-btn" class="primary">合成恢复密钥</button>
+      </div>
+
+      <ul id="form-errors" class="form-errors" hidden></ul>
+    </form>
+
+    <section id="result" class="result" hidden aria-live="polite"></section>
+
+    <footer class="note">
+      判定规则：全部份额一致 → <code>CONSISTENT</code>；仅剔除一张卡即可令其余不少于门限值的份额一致 →
+      <code>RECOVERED</code>（同时给出问题卡编号）；否则 → <code>CONFLICT</code>，且不输出任何密钥。
+    </footer>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
