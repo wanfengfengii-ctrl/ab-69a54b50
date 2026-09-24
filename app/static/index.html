@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>离线恢复卡 · 设备恢复密钥合成</title>
+<style>
+  :root {
+    --bg: #0f141a;
+    --panel: #18202b;
+    --panel-2: #1f2937;
+    --line: #2d3a4a;
+    --text: #e6edf3;
+    --muted: #93a1b0;
+    --accent: #4da3ff;
+    --ok: #3fb97a;
+    --warn: #e0a13c;
+    --err: #e5604f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 -apple-system, "Segoe UI", "PingFang SC",
+      "Microsoft YaHei", sans-serif;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 22px; font-size: 13px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
+  }
+  .panel h2 { font-size: 15px; margin: 0 0 12px; font-weight: 600; }
+  .row-head, .card-row {
+    display: grid;
+    grid-template-columns: 34px 130px 1fr 34px;
+    gap: 10px;
+    align-items: center;
+  }
+  .row-head { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  .card-row { margin-bottom: 8px; }
+  .card-row input {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 8px 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+  }
+  .card-row input:focus { outline: none; border-color: var(--accent); }
+  .card-row.invalid input { border-color: var(--err); }
+  .idx { color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
+  .share-input { text-transform: lowercase; }
+  .del-btn {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    border-radius: 6px;
+    height: 33px;
+    cursor: pointer;
+  }
+  .del-btn:hover:not(:disabled) { color: var(--err); border-color: var(--err); }
+  .del-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .controls {
+    display: flex; align-items: center; gap: 14px;
+    margin-top: 12px; flex-wrap: wrap;
+  }
+  .add-btn {
+    background: transparent; border: 1px dashed var(--line);
+    color: var(--accent); border-radius: 6px; padding: 7px 14px; cursor: pointer;
+  }
+  .add-btn:hover:not(:disabled) { border-color: var(--accent); }
+  .add-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .threshold-box { display: flex; align-items: center; gap: 8px; }
+  .threshold-box input {
+    width: 64px; background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 6px; color: var(--text); padding: 7px 10px;
+  }
+  .threshold-box input:focus { outline: none; border-color: var(--accent); }
+  .threshold-box.invalid input { border-color: var(--err); }
+  .submit-btn {
+    margin-left: auto;
+    background: var(--accent); color: #08131f; border: none;
+    border-radius: 6px; padding: 9px 26px; font-weight: 600; cursor: pointer;
+  }
+  .submit-btn:disabled { opacity: .5; cursor: wait; }
+  .field-err { color: var(--err); font-size: 12px; margin-top: -2px; }
+  .row-err {
+    grid-column: 2 / 4;
+    color: var(--err); font-size: 12px;
+  }
+  .global-errors {
+    background: rgba(229, 96, 79, .1);
+    border: 1px solid var(--err);
+    border-radius: 8px; padding: 10px 14px; margin-bottom: 16px;
+  }
+  .global-errors ul { margin: 4px 0 0; padding-left: 18px; }
+  .result { border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; }
+  .result .status { font-size: 17px; font-weight: 700; letter-spacing: 1px; }
+  .result .desc { color: var(--muted); font-size: 13px; margin: 4px 0 12px; }
+  .result.consistent { background: rgba(63,185,122,.09); border: 1px solid var(--ok); }
+  .result.consistent .status { color: var(--ok); }
+  .result.recovered { background: rgba(224,161,60,.09); border: 1px solid var(--warn); }
+  .result.recovered .status { color: var(--warn); }
+  .result.conflict { background: rgba(229,96,79,.09); border: 1px solid var(--err); }
+  .result.conflict .status { color: var(--err); }
+  .key-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .key-line .label { color: var(--muted); font-size: 12px; }
+  .key-val {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 6px; padding: 8px 12px;
+    word-break: break-all; user-select: all;
+  }
+  .copy-btn {
+    background: transparent; border: 1px solid var(--line);
+    color: var(--accent); border-radius: 6px; padding: 6px 12px; cursor: pointer;
+  }
+  .copy-btn:hover { border-color: var(--accent); }
+  .bad-card {
+    display: inline-block; margin: 0 0 10px;
+    background: rgba(224,161,60,.15); border: 1px solid var(--warn);
+    border-radius: 6px; padding: 4px 12px; font-weight: 600;
+  }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>离线恢复卡 · 设备恢复密钥合成</h1>
+  <p class="sub">在 GF(256) 上将各卡份额视为门限减一阶多项式上的点，以零点值作为恢复密钥。全部份额须为等长十六进制串。</p>
+
+  <div id="globalErrors" class="global-errors hidden">
+    <strong>输入有误，请修正后重新提交：</strong>
+    <ul id="globalErrorList"></ul>
+  </div>
+
+  <div id="resultPanel" class="result hidden" aria-live="polite"></div>
+
+  <form id="recoveryForm" class="panel" autocomplete="off" novalidate>
+    <h2>卡片份额（4–8 张，编号唯一且非零，取值 1–255）</h2>
+    <div class="row-head">
+      <span class="idx">#</span><span>卡编号</span><span>十六进制份额</span><span></span>
+    </div>
+    <div id="rows"></div>
+
+    <div class="controls">
+      <button type="button" id="addBtn" class="add-btn">+ 添加卡片</button>
+      <label class="threshold-box" id="thresholdBox">
+        门限值
+        <input id="threshold" name="threshold" inputmode="numeric" value="3">
+        <span class="field-err" id="thresholdErr"></span>
+      </label>
+      <button type="submit" id="submitBtn" class="submit-btn">合成恢复密钥</button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var MIN_CARDS = 4, MAX_CARDS = 8;
+  var rowsEl = document.getElementById("rows");
+  var addBtn = document.getElementById("addBtn");
+  var form = document.getElementById("recoveryForm");
+  var submitBtn = document.getElementById("submitBtn");
+  var thresholdInput = document.getElementById("threshold");
+  var thresholdBox = document.getElementById("thresholdBox");
+  var thresholdErr = document.getElementById("thresholdErr");
+  var globalErrors = document.getElementById("globalErrors");
+  var globalErrorList = document.getElementById("globalErrorList");
+  var resultPanel = document.getElementById("resultPanel");
+
+  function makeRow() {
+    var wrap = document.createElement("div");
+    wrap.className = "card-row";
+    wrap.innerHTML =
+      '<span class="idx"></span>' +
+      '<input class="card-input" inputmode="numeric" placeholder="如 7">' +
+      '<input class="share-input" placeholder="如 1a2b3c4d…" spellcheck="false">' +
+      '<button type="button" class="del-btn" title="移除该行">×</button>' +
+      '<div class="row-err hidden"></div>';
+    wrap.querySelector(".del-btn").addEventListener("click", function () {
+      wrap.remove();
+      renumber();
+    });
+    return wrap;
+  }
+
+  function renumber() {
+    var rows = rowsEl.children;
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].querySelector(".idx").textContent = String(i + 1);
+    }
+    addBtn.disabled = rows.length >= MAX_CARDS;
+    Array.prototype.forEach.call(rowsEl.querySelectorAll(".del-btn"),
+      function (btn) { btn.disabled = rows.length <= MIN_CARDS; });
+  }
+
+  function addRow() {
+    if (rowsEl.children.length >= MAX_CARDS) return;
+    rowsEl.appendChild(makeRow());
+    renumber();
+  }
+
+  for (var i = 0; i < MIN_CARDS; i++) addRow();
+
+  addBtn.addEventListener("click", addRow);
+
+  function clearFeedback() {
+    // Submitting new data must never leave the previous conclusion in place.
+    resultPanel.className = "result hidden";
+    resultPanel.innerHTML = "";
+    globalErrors.className = "global-errors hidden";
+    globalErrorList.innerHTML = "";
+    thresholdErr.textContent = "";
+    thresholdBox.classList.remove("invalid");
+    Array.prototype.forEach.call(rowsEl.children, function (row) {
+      row.classList.remove("invalid");
+      var err = row.querySelector(".row-err");
+      err.textContent = "";
+      err.classList.add("hidden");
+    });
+  }
+
+  function showRowError(index, message) {
+    var row = rowsEl.children[index];
+    if (!row) return;
+    row.classList.add("invalid");
+    var err = row.querySelector(".row-err");
+    err.textContent = message;
+    err.classList.remove("hidden");
+  }
+
+  function showGlobal(message) {
+    var li = document.createElement("li");
+    li.textContent = message;
+    globalErrorList.appendChild(li);
+    globalErrors.classList.remove("hidden");
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;",
+               '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function renderResult(data) {
+    var status = data.status;
+    var html = "";
+    if (status === "CONSISTENT") {
+      resultPanel.className = "result consistent";
+      html =
+        '<div class="status">CONSISTENT</div>' +
+        '<div class="desc">全部份额一致，可放心使用以下密钥进行设备恢复。</div>' +
+        keyBlock(data.key);
+    } else if (status === "RECOVERED") {
+      resultPanel.className = "result recovered";
+      html =
+        '<div class="status">RECOVERED</div>' +
+        '<div class="desc">剔除一张卡后，其余不少于门限值的份额一致。</div>' +
+        '<div class="bad-card">问题卡编号：' + esc(data.bad_card) + '</div>' +
+        keyBlock(data.key);
+    } else {
+      // CONFLICT: deliberately renders no key material.
+      resultPanel.className = "result conflict";
+      html =
+        '<div class="status">CONFLICT</div>' +
+        '<div class="desc">份额存在无法定位到单张卡的冲突，拒绝输出密钥。' +
+        '请重新核对所有卡片后再提交。</div>';
+    }
+    resultPanel.innerHTML = html;
+    var copyBtn = resultPanel.querySelector(".copy-btn");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", function () {
+        var keyEl = resultPanel.querySelector(".key-val");
+        function copied() {
+          copyBtn.textContent = "已复制";
+          setTimeout(function () { copyBtn.textContent = "复制"; }, 1200);
+        }
+        function selectFallback() {
+          // navigator.clipboard is unavailable on plain HTTP; select text.
+          var range = document.createRange();
+          range.selectNodeContents(keyEl);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          copyBtn.textContent = "已选中，按 Ctrl+C";
+          setTimeout(function () { copyBtn.textContent = "复制"; }, 2000);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(keyEl.textContent)
+            .then(copied, selectFallback);
+        } else {
+          selectFallback();
+        }
+      });
+    }
+  }
+
+  function keyBlock(key) {
+    return '<div class="key-line"><span class="label">恢复密钥（hex）</span>' +
+      '<code class="key-val">' + esc(key) + '</code>' +
+      '<button type="button" class="copy-btn">复制</button></div>';
+  }
+
+  form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    clearFeedback();
+
+    var cards = [], shares = [];
+    Array.prototype.forEach.call(rowsEl.children, function (row) {
+      cards.push(row.querySelector(".card-input").value.trim());
+      shares.push(row.querySelector(".share-input").value.trim());
+    });
+
+    var payload = {
+      cards: cards.map(function (v) { return v === "" ? v : Number(v); }),
+      threshold: thresholdInput.value.trim() === ""
+        ? "" : Number(thresholdInput.value),
+      shares: shares
+    };
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "合成中…";
+
+    fetch("/api/recovery/reconstruct", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function (resp) {
+      return resp.json().then(function (data) { return { ok: resp.ok, data: data }; });
+    }).then(function (r) {
+      var data = r.data || {};
+      if (!r.ok || data.ok === false) {
+        (data.errors || []).forEach(function (e) {
+          if (e.field === "share" && typeof e.index === "number") {
+            showRowError(e.index, "份额：" + e.message);
+          } else if (e.field === "card" && typeof e.index === "number") {
+            showRowError(e.index, "编号：" + e.message);
+          } else if (e.field === "threshold") {
+            thresholdErr.textContent = e.message;
+            thresholdBox.classList.add("invalid");
+          } else {
+            showGlobal(e.message);
+          }
+        });
+        if (!(data.errors || []).length) showGlobal("请求被拒绝");
+      } else {
+        renderResult(data);
+      }
+    }).catch(function () {
+      showGlobal("网络错误，服务不可达，请稍后重试。");
+    }).finally(function () {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "合成恢复密钥";
+    });
+  });
+})();
+</script>
+</body>
+</html>

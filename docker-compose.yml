@@ -1,0 +1,48 @@
+# Recovery-card reconstruction service stack.
+#
+# Host port is configurable via the HOST_PORT environment variable:
+#   HOST_PORT=9090 docker compose up --build
+# (defaults to 8080 when unset).
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: recovery-card:latest
+    environment:
+      PORT: "8080"
+    ports:
+      # host:container — only the host side is configurable by design.
+      - "${HOST_PORT:-8080}:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+
+  # One-shot acceptance service: runs build check, the unittest suite and
+  # HTTP smoke against the web service, then exits. Its exit code reports
+  # the verdict (0 = accepted). Run with:
+  #   docker compose build && docker compose up --exit-code-from verify verify
+  # or, as part of the full stack:
+  #   HOST_PORT=9090 docker compose up --build --abort-on-container-exit \
+  #       --exit-code-from verify
+  verify:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: recovery-card:latest
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      SMOKE_URL: "http://web:8080"
+    entrypoint: ["python", "verify.py"]
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
